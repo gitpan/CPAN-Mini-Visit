@@ -1,9 +1,9 @@
 #!/usr/bin/perl
 
 use strict;
+use warnings;
 BEGIN {
 	$|  = 1;
-	$^W = 1;
 }
 
 use Test::More tests => 22;
@@ -16,6 +16,7 @@ ok( -d $minicpan, "Found root minicpan '$minicpan'" );
 my @data  = ();
 my $visit = new_ok( 'CPAN::Mini::Visit' => [
 	minicpan => $minicpan,
+	ignore   => [ qr/\bFile\b/ ],
 	callback => sub {
 		push @data, { %{ $_[0] } };
 	},

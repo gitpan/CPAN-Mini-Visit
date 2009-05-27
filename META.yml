@@ -5,10 +5,11 @@ author:
 build_requires:
   ExtUtils::MakeMaker: 6.42
   Test::More: 0.86
+  Test::NoWarnings: 0.084
 configure_requires:
   ExtUtils::MakeMaker: 6.42
 distribution_type: module
-generated_by: 'Module::Install version 0.88'
+generated_by: 'Module::Install version 0.90'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -17,10 +18,12 @@ module_name: CPAN::Mini::Visit
 name: CPAN-Mini-Visit
 no_index:
   directory:
+    - examples
     - inc
     - t
 requires:
   Archive::Extract: 0.30
+  CPAN::Mini: 0.576
   File::Find::Rule: 0.27
   File::Spec: 0.80
   File::Temp: 0.21
@@ -32,4 +35,4 @@ resources:
   ChangeLog: http://fisheye2.atlassian.com/changelog/cpan/trunk/CPAN-Mini-Visit
   license: http://dev.perl.org/licenses/
   repository: http://svn.ali.as/cpan/trunk/CPAN-Mini-Visit
-version: 0.02
+version: 0.03

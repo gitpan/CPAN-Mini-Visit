@@ -13,6 +13,7 @@ CPAN::Mini::Visit - A generalised API version of David Golden's visitcpan
       acme     => 0,
       author   => 'ADAMK',
       callback => sub {
+          print "# counter: $_[0]->{counter}\n";
           print "# archive: $_[0]->{archive}\n";
           print "# tempdir: $_[0]->{tempdir}\n";
           print "# dist:    $_[0]->{dist}\n";
@@ -20,6 +21,7 @@ CPAN::Mini::Visit - A generalised API version of David Golden's visitcpan
       }
   )->run;
   
+  # counter: 1234
   # archive: /minicpan/authors/id/A/AD/ADAMK/Config-Tiny-1.00.tar.gz
   # tempdir: /tmp/1a4YRmFAJ3/Config-Tiny-1.00
   # dist:    ADAMK/Config-Tiny-1.00.tar.gz
@@ -66,13 +68,13 @@ use File::Spec        0.80 ();
 use File::Temp        0.21 ();
 use File::pushd       1.00 ();
 use File::Find::Rule  0.27 ();
-use Params::Util      0.36 qw{
+use Params::Util      1.00 qw{
 	_HASH _STRING _ARRAYLIKE _CODELIKE _REGEX
 };
-use Archive::Extract  0.30 ();
+use Archive::Extract  0.32 ();
 use CPAN::Mini       0.576 ();
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use Object::Tiny 1.06 qw{
 	minicpan
@@ -81,6 +83,7 @@ use Object::Tiny 1.06 qw{
 	acme
 	author
 	ignore
+	warnings
 };
 
 =pod
@@ -112,6 +115,9 @@ Returns a B<CPAN::Mini::Visit> object, or throws an exception on error.
 sub new {
 	my $class = shift;
 	my $self  = bless { @_ }, $class;
+
+	# Normalise
+	$self->{warnings} = $self->warnings ? 1 : 0;
 
 	# Check params
 	unless (
@@ -165,7 +171,7 @@ sub run {
 	}
 
 	# Search for the files
-	my $find  = File::Find::Rule->name('*.tar.gz', '*.tgz')->file->relative;
+	my $find  = File::Find::Rule->name('*.tar.gz', '*.tgz', '*.zip', '*.bz2')->file->relative;
 	my @files = sort $find->in( $self->authors );
 	unless ( $self->acme ) {
 		@files = grep { ! /\bAcme\b/ } @files;
@@ -184,6 +190,7 @@ sub run {
 	}
 
 	# Extract the archive
+	my $counter = 0;
 	foreach my $file ( @files ) {
 		# Derive the main file properties
 		my $path = File::Spec->catfile( $self->authors, $file );
@@ -197,14 +204,19 @@ sub run {
 			next;
 		}
 
+		# Explicitly ignore some damaging distributions
+		next if $path =~ /Text-SenseClusters/;
+		next if $path =~ /Bio-Affymetrix/;
+		next if $path =~ /Alien-MeCab/;
+
 		# Extract the archive
-		if ( (stat($path))[7] > 3 * 1024 * 1024 ) {
-			warn("Archive '$path' is above the 3meg limit");
-			next;
-		}
-		my $archive = Archive::Extract->new( archive => $path );
-		my $tmpdir  = File::Temp->newdir;
-		unless ( $archive->extract( to => $tmpdir ) ) {
+		local $Archive::Tar::WARN = $self->warnings;
+		my $archive   = Archive::Extract->new( archive => $path );
+		my $tmpdir    = File::Temp->newdir;
+		my $extracted = eval {
+			$archive->extract( to => $tmpdir );
+		};
+		if ( $@ or not $extracted ) {
 			warn("Failed to extract '$path'");
 			next;
 		}
@@ -219,6 +231,7 @@ sub run {
 			archive => $path,
 			dist    => $dist,
 			author  => $author,
+			counter => ++$counter,
 		} );
 	}
 

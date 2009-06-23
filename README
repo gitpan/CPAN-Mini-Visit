@@ -8,6 +8,7 @@ SYNOPSIS
           acme     => 0,
           author   => 'ADAMK',
           callback => sub {
+              print "# counter: $_[0]->{counter}\n";
               print "# archive: $_[0]->{archive}\n";
               print "# tempdir: $_[0]->{tempdir}\n";
               print "# dist:    $_[0]->{dist}\n";
@@ -15,7 +16,8 @@ SYNOPSIS
           }
       )->run;
       
-  # archive: /minicpan/authors/id/A/AD/ADAMK/Config-Tiny-1.00.tar.gz
+  # counter: 1234
+      # archive: /minicpan/authors/id/A/AD/ADAMK/Config-Tiny-1.00.tar.gz
       # tempdir: /tmp/1a4YRmFAJ3/Config-Tiny-1.00
       # dist:    ADAMK/Config-Tiny-1.00.tar.gz
       # author:  ADAMK

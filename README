@@ -7,6 +7,8 @@ SYNOPSIS
           minicpan => '/minicpan',
           acme     => 0,
           author   => 'ADAMK',
+          warnings => 1,
+          random   => 1,
           callback => sub {
               print "# counter: $_[0]->{counter}\n";
               print "# archive: $_[0]->{archive}\n";
@@ -73,6 +75,13 @@ DESCRIPTION
 
     The "author" param can be provided to limit the visit to only the
     modules owned by a specific author.
+
+    The "warnings" param will turn on Archive::Extract warnings if enabled,
+    or disable warnings otherwise.
+
+    The "random" param will cause the archives to be processed in random
+    order if enabled. If not, the archives will be processed in alphabetical
+    order.
 
     Returns a CPAN::Mini::Visit object, or throws an exception on error.
 

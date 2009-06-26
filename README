@@ -76,12 +76,16 @@ DESCRIPTION
     The "author" param can be provided to limit the visit to only the
     modules owned by a specific author.
 
-    The "warnings" param will turn on Archive::Extract warnings if enabled,
-    or disable warnings otherwise.
-
     The "random" param will cause the archives to be processed in random
     order if enabled. If not, the archives will be processed in alphabetical
     order.
+
+    The "warnings" param will turn on Archive::Extract warnings if enabled,
+    or disable warnings otherwise.
+
+    The "prefer_bin" param will tell Archive::Extract to use binary extract
+    instead of CPAN module extract wherever possible. By default, it will
+    use module-based extract.
 
     Returns a CPAN::Mini::Visit object, or throws an exception on error.
 

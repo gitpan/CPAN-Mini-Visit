@@ -69,6 +69,7 @@ use Carp                   'croak';
 use File::Spec        0.80 ();
 use File::Temp        0.21 ();
 use File::pushd       1.00 ();
+use File::chmod       0.31 ();
 use File::Find::Rule  0.27 ();
 use Params::Util      1.00 qw{
 	_HASH _STRING _ARRAYLIKE _CODELIKE _REGEX
@@ -76,7 +77,7 @@ use Params::Util      1.00 qw{
 use Archive::Extract  0.32 ();
 use CPAN::Mini       0.576 ();
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 use Object::Tiny 1.06 qw{
 	minicpan
@@ -227,30 +228,42 @@ sub run {
 		}
 
 		# Explicitly ignore some damaging distributions
-		next if $path =~ /Text-SenseClusters/;
-		next if $path =~ /Bio-Affymetrix/;
-		next if $path =~ /Alien-MeCab/;
+		# if we are using Perl extraction
+		unless ( $self->prefer_bin ) {
+			next if $path =~ /Text-SenseClusters/;
+			next if $path =~ /Bio-Affymetrix/;
+			next if $path =~ /Alien-MeCab/;
+		}
 
 		# Extract the archive
 		local $Archive::Extract::WARN       = $self->warnings;
 		local $Archive::Extract::PREFER_BIN = $self->prefer_bin;
-		my $archive   = Archive::Extract->new( archive => $path );
-		my $tmpdir    = File::Temp->newdir;
-		my $extracted = eval {
+		my $archive = Archive::Extract->new( archive => $path );
+		my $tmpdir  = File::Temp->newdir;
+		my $ok      = eval {
 			$archive->extract( to => $tmpdir );
 		};
-		if ( $@ or not $extracted ) {
+		if ( $@ or not $ok ) {
 			warn("Failed to extract '$path'");
 			next;
 		}
 
+		# If using bin tools, do an additional check for
+		# damaged tarballs with non-executable directories (on unix)
+		my $extract = $archive->extract_path;
+		unless ( -r $extract and -x $extract ) {
+			# Handle special case where we have screwed up
+			# permissions on the extract directory.
+			# Just assume we have permissions for that.
+			File::chmod::chmod( 0755, $extract );
+		}
+
 		# Change into the directory
-		my $tempdir = $archive->extract_path;
-		my $pushd   = File::pushd::pushd( $tempdir );
+		my $pushd = File::pushd::pushd( $extract );
 
 		# Invoke the callback
 		$self->callback->( {
-			tempdir => $tempdir,
+			tempdir => $extract,
 			archive => $path,
 			dist    => $dist,
 			author  => $author,

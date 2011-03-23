@@ -49,7 +49,7 @@ DESCRIPTION
     This improvement in flexibility turns out to be worth the extra
     computation time in almost all cases.
 
-    CPAN::Mini::Visit is a simplified and generalised API-based ersion of
+    CPAN::Mini::Visit is a simplified and generalised API-based version of
     David Golden's visitcpan script.
 
     It implements only the process of discovering, iterating and expanding
@@ -68,6 +68,12 @@ DESCRIPTION
     the location of the temporary directory in the "tempdir" key, the
     canonical CPAN distribution name in the "dist" key, and the author id in
     the "author" key.
+
+    The optional "skip" param should be a "CODE" reference that will be
+    called for each visit before extracting dist. The first parameter passed
+    to the callback will be a "HASH" reference with "archive", "dist" and
+    "author" keys. Callback should return 1 if dist should be skipped and 0
+    otherwise.
 
     The "acme" param (true by default) can be set to false to exclude any
     distributions that contain the string "Acme", allowing the visit to
@@ -107,7 +113,7 @@ AUTHOR
     Adam Kennedy <adamk@cpan.org>
 
 COPYRIGHT
-    Copyright 2009 Adam Kennedy.
+    Copyright 2009 - 2011 Adam Kennedy.
 
     This program is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.

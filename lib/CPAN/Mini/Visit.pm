@@ -53,7 +53,7 @@ easy ad-hoc computations.
 This improvement in flexibility turns out to be worth the extra computation
 time in almost all cases.
 
-B<CPAN::Mini::Visit> is a simplified and generalised API-based ersion of 
+B<CPAN::Mini::Visit> is a simplified and generalised API-based version of 
 David Golden's L<visitcpan> script.
 
 It implements only the process of discovering, iterating and expanding
@@ -65,7 +65,7 @@ provided to the constructor.
 use 5.008;
 use strict;
 use warnings;
-use Carp                   'croak';
+use Carp                   ();
 use File::Spec        0.80 ();
 use File::Temp        0.21 ();
 use File::pushd       1.00 ();
@@ -73,16 +73,16 @@ use File::chmod       0.31 ();
 use File::Find::Rule  0.27 ();
 use Archive::Extract  0.32 ();
 use CPAN::Mini       0.576 ();
-use Params::Util      1.00 qw{
-	_HASH _STRING _ARRAYLIKE _CODELIKE _REGEX
-};
+use Params::Util      1.00 ();
 
-our $VERSION = '0.11';
+our $VERSION = '0.12_01';
+$VERSION = eval $VERSION;
 
 use Object::Tiny 1.06 qw{
 	minicpan
 	authors
 	callback
+	skip
 	acme
 	author
 	ignore
@@ -105,6 +105,12 @@ for each visit. The first parameter passed to the callback will be a C<HASH>
 reference containing the tarball location in the C<archive> key, the location
 of the temporary directory in the C<tempdir> key, the canonical CPAN
 distribution name in the C<dist> key, and the author id in the C<author> key.
+
+The optional C<skip> param should be a C<CODE> reference
+that will be called for each visit before extracting dist. The first
+parameter passed to the callback will be a C<HASH> reference with C<archive>,
+C<dist> and C<author> keys. Callback should return 1 if dist should be skipped
+and 0 otherwise.
 
 The C<acme> param (true by default) can be set to false to exclude any
 distributions that contain the string "Acme", allowing the visit to ignore
@@ -138,29 +144,47 @@ sub new {
 
 	# Check params
 	unless (
-		_HASH($self->minicpan)
+		Params::Util::_HASH($self->minicpan)
 		or (
-			defined _STRING($self->minicpan)
+			defined Params::Util::_STRING($self->minicpan)
 			and
 			-d $self->minicpan
 		)
 	) {
-		croak("Missing or invalid 'minicpan' param");
+		Carp::croak("Missing or invalid 'minicpan' param");
 	}
-	unless ( _CODELIKE($self->callback) ) {
-		croak("Missing or invalid 'callback' param");
+	unless ( Params::Util::_CODELIKE($self->callback) ) {
+		Carp::croak("Missing or invalid 'callback' param");
 	}
-	unless ( defined $self->ignore ) {
+	if ( defined $self->ignore ) {
+		unless ( Params::Util::_ARRAYLIKE($self->ignore) ) {
+			Carp::croak("Invalid 'ignore' param");
+		}
+		# Clone the array so we can prepend more things
+		$self->{ignore} = [ @{ $self->ignore } ];
+	} else {
 		$self->{ignore} = [];
 	}
-	unless ( _ARRAYLIKE($self->ignore) ) {
-		croak("Invalid 'ignore' param");
+
+	# Apply the optional author setting
+	my $author = Params::Util::_STRING($self->author);
+	if ( defined $author ) {
+		unshift @{$self->ignore}, sub {
+			$_[0]->{author} ne $author;
+		};
+	}
+
+	# Clean and apply the acme setting
+	$self->{acme} = 1 unless defined $self->{acme};
+	$self->{acme} = !! $self->{acme};
+	unless ( $self->{acme} ) {
+		unshift @{$self->ignore}, qr/\bAcme\b/;
 	}
 
 	# Derive the authors directory
 	$self->{authors} = File::Spec->catdir( $self->_minicpan, 'authors', 'id' );
 	unless ( -d $self->authors ) {
-		croak("Authors directory '$self->{authors}' does not exist");
+		Carp::croak("Authors directory '$self->{authors}' does not exist");
 	}
 
 	return $self;
@@ -183,74 +207,77 @@ sub run {
 
 	# If we've been passed a HASH minicpan param,
 	# do an update_mirror first, before the regular run.
-	if ( _HASH($self->minicpan) ) {
+	if ( Params::Util::_HASH($self->minicpan) ) {
 		CPAN::Mini->update_mirror(%{$self->minicpan});
 	}
 
 	# Search for the files
 	my $find  = File::Find::Rule->name('*.tar.gz', '*.tgz', '*.zip', '*.bz2')->file->relative;
 	my @files = sort $find->in( $self->authors );
-	unless ( $self->acme ) {
-		@files = grep { ! /\bAcme\b/ } @files;
-	}
-	foreach my $filter ( @{$self->ignore} ) {
-		if ( defined _STRING($filter) ) {
-			$filter = quotemeta $filter;
-			$filter = qr/$filter/;
-		}
-		if ( _REGEX($filter) ) {
-			@files = grep { ! /$filter/ } @files;
-		} elsif ( _CODELIKE($filter) ) {
-			@files = grep { ! $filter->($_) } @files;
-		} else {
-			die("Missing or invalid filter");
-		}
-	}
 
-	# Randomise if needed
+	# Randomise if applicable
 	if ( $self->random ) {
 		@files = sort { rand() <=> rand() } @files;
 	}
 
 	# Extract the archive
 	my $counter = 0;
-	foreach my $file ( @files ) {
+	foreach my $path ( @files ) {
 		# Derive the main file properties
-		my $path = File::Spec->catfile( $self->authors, $file );
-		my $dist = $file;
-		$dist =~ s|^[A-Z]/[A-Z][A-Z]/|| or die "Bad distpath for $file";
+		my $archive = File::Spec->catfile( $self->authors, $path );
+		my $dist    = $path;
+		$dist =~ s|^[A-Z]/[A-Z][A-Z]/|| or die "Bad distpath for $path";
 		unless ( $dist =~ /^([A-Z]+)/ ) {
-			die "Bad author for $file";
+			die "Bad author for $path";
 		}
 		my $author = "$1";
-		if ( $self->author and $self->author ne $author ) {
-			next;
+
+		# Apply the ignore filters
+		my $skip = 0;
+		foreach my $filter ( @{$self->ignore} ) {
+			if ( defined Params::Util::_STRING($filter) ) {
+				$filter = quotemeta $filter;
+				$filter = qr/$filter/;
+			}
+			if ( Params::Util::_REGEX($filter) ) {
+				$skip = 1 if $dist =~ $filter;
+			} elsif ( Params::Util::_CODELIKE($filter) ) {
+				$skip = 1 if $filter->( {
+					counter => $counter,
+					archive => $archive,
+					dist    => $dist,
+					author  => $author,
+				} );
+			} else {
+				Carp::croak("Missing or invalid filter");
+			}
 		}
+		next if $skip;
 
 		# Explicitly ignore some damaging distributions
 		# if we are using Perl extraction
 		unless ( $self->prefer_bin ) {
-			next if $path =~ /\bHarvey-\d/;
-			next if $path =~ /\bText-SenseClusters\b/;
-			next if $path =~ /\bBio-Affymetrix\b/;
-			next if $path =~ /\bAlien-MeCab\b/;
+			next if $dist =~ /\bHarvey-\d/;
+			next if $dist =~ /\bText-SenseClusters\b/;
+			next if $dist =~ /\bBio-Affymetrix\b/;
+			next if $dist =~ /\bAlien-MeCab\b/;
 		}
 
 		# Extract the archive
 		local $Archive::Extract::WARN       = !! ($self->warnings > 1);
 		local $Archive::Extract::PREFER_BIN = $self->prefer_bin;
-		my $archive = Archive::Extract->new( archive => $path );
+		my $extract = Archive::Extract->new( archive => $archive );
 		my $tmpdir  = File::Temp->newdir;
 		my $ok      = 0;
 		SCOPE: {
 			my $pushd1 = File::pushd::pushd( File::Spec->curdir );
 			$ok = eval {
-				$archive->extract( to => $tmpdir );
+				$extract->extract( to => $tmpdir );
 			};
 		}
 		if ( $@ or not $ok ) {
 			if ( $self->warnings > 1 ) {
-				warn("Failed to extract '$path': $@");
+				warn("Failed to extract '$archive': $@");
 			} elsif ( $self->warnings ) {
 				print "  Failed: $dist\n";
 			}
@@ -259,24 +286,24 @@ sub run {
 
 		# If using bin tools, do an additional check for
 		# damaged tarballs with non-executable directories (on unix)
-		my $extract = $archive->extract_path;
-		unless ( -r $extract and -x $extract ) {
+		my $extracted = $extract->extract_path;
+		unless ( -r $extracted and -x $extracted ) {
 			# Handle special case where we have screwed up
 			# permissions on the extract directory.
 			# Just assume we have permissions for that.
-			File::chmod::chmod( 0755, $extract );
+			File::chmod::chmod( 0755, $extracted );
 		}
 
 		# Change into the directory
-		my $pushd2 = File::pushd::pushd( $extract );
+		my $pushd2 = File::pushd::pushd( $extracted );
 
 		# Invoke the callback
 		$self->callback->( {
-			tempdir => $extract,
-			archive => $path,
+			counter => ++$counter,
+			archive => $archive,
 			dist    => $dist,
 			author  => $author,
-			counter => ++$counter,
+			tempdir => $extracted,
 		} );
 	}
 
@@ -292,7 +319,7 @@ sub run {
 
 sub _minicpan {
 	my $self = shift;
-	return _HASH($self->minicpan)
+	return Params::Util::_HASH($self->minicpan)
 		? $self->minicpan->{local}
 		: $self->minicpan;
 }
@@ -315,7 +342,7 @@ Adam Kennedy E<lt>adamk@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2009 Adam Kennedy.
+Copyright 2009 - 2011 Adam Kennedy.
 
 This program is free software; you can redistribute
 it and/or modify it under the same terms as Perl itself.

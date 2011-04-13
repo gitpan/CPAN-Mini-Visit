@@ -69,12 +69,6 @@ DESCRIPTION
     canonical CPAN distribution name in the "dist" key, and the author id in
     the "author" key.
 
-    The optional "skip" param should be a "CODE" reference that will be
-    called for each visit before extracting dist. The first parameter passed
-    to the callback will be a "HASH" reference with "archive", "dist" and
-    "author" keys. Callback should return 1 if dist should be skipped and 0
-    otherwise.
-
     The "acme" param (true by default) can be set to false to exclude any
     distributions that contain the string "Acme", allowing the visit to
     ignore any of the joke modules.

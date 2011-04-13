@@ -38,4 +38,4 @@ resources:
   ChangeLog: http://fisheye2.atlassian.com/changelog/cpan/trunk/CPAN-Mini-Visit
   license: http://dev.perl.org/licenses/
   repository: http://svn.ali.as/cpan/trunk/CPAN-Mini-Visit
-version: 0.12_01
+version: 0.13
